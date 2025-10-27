@@ -89,4 +89,41 @@ You will receive an individual API Key for class assignments. To prevent acciden
    ```
 
 ## Troubleshooting
-- The Jupyter extension should install automatically. If you still cannot select a Python kernel on Jupyter Notebook: Go to the left sidebar >> **Extensions** >> search for **Jupyter** >> reload window (or reinstall it).   
+- The Jupyter extension should install automatically. If you still cannot select a Python kernel on Jupyter Notebook: Go to the left sidebar >> **Extensions** >> search for **Jupyter** >> reload window (or reinstall it).
+
+## RAG Application
+
+### Overview
+This application allows users to upload `.txt` and `.pdf` documents and have a conversation with their content. It uses **LangChain** for the Retrieval-Augmented Generation (RAG) pipeline and **Streamlit** to create a chat-style web interface. It stores your document data in **ChromaDB** for fast and accurate retrieval.
+
+### Features
+- Upload `.txt` and `.pdf` files.
+- Support for multiple document uploads.
+- Document chunking for efficient processing of large files.
+- Conversational interface for querying document content.
+
+### Setup Instructions
+
+1. **Install Dependencies**:
+   Make sure you are in the provided Codespace environment. Run the following command to install the required dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run the Application**:
+   Start the Streamlit application by running:
+   ```bash
+   streamlit run chat_with_pdf.py
+   ```
+
+3. **Upload Documents**:
+   - Use the file uploader to upload `.txt` or `.pdf` files.
+   - Ask questions about the uploaded documents with the chat interface.
+
+### Notes
+- Before running the app, make sure your OpenAI API key is saved as the environment variable `API_KEY`.
+- The app uses ChromaDB as its vector database to store, search, and retrieve document information efficiently.
+
+### Changes to Provided Setup
+- Added `chromadb` to `requirements.txt` to enable vector database functionality.
+- Updated chat_with_pdf.py to support both .txt and .pdf uploads, document chunking, and full RAG pipeline integration.

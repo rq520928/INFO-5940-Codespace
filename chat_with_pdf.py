@@ -1,46 +1,87 @@
 import streamlit as st
 import os
-from openai import OpenAI
-from os import environ
+import tempfile
+from langchain_community.document_loaders import TextLoader, PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_openai import OpenAIEmbeddings
+from langchain.chains import RetrievalQA
+from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
 
-client = OpenAI(
-	api_key=os.environ["API_KEY"],
-	base_url="https://api.ai.it.cornell.edu",
+load_dotenv()
+
+# Retrieve the API key from environment variables key
+api_key = os.getenv("API_KEY")
+if not api_key:
+    st.error("API key not found. Please set the API_KEY environment variable.")
+    st.stop()
+# Set up the OpenAI chat client (Cornell’s internal API endpoint)
+client = ChatOpenAI(
+    model="openai.gpt-4o",
+    temperature=0.2,
+    openai_api_key=api_key,
+    openai_api_base="https://api.ai.it.cornell.edu",
 )
 
-st.title("📝 File Q&A with OpenAI")
-uploaded_file = st.file_uploader("Upload an article", type=("txt", "md"))
+# Streamlit app starts
+st.title("RAG-based Document Chat")
 
-question = st.chat_input(
-    "Ask something about the article",
-    disabled=not uploaded_file,
-)
+# Allow users upload one or more documents (.txt or .pdf)
+uploaded_files = st.file_uploader("Upload your documents", type=["txt", "pdf"], accept_multiple_files=True)
 
-if "messages" not in st.session_state:
-    st.session_state["messages"] = [{"role": "assistant", "content": "Ask something about the article"}]
+if uploaded_files:
+    documents = []
 
-for msg in st.session_state.messages:
-    st.chat_message(msg["role"]).write(msg["content"])
+    for uploaded_file in uploaded_files:
+        file_name = uploaded_file.name
+        file_extension = os.path.splitext(file_name)[1].lower()
 
-if question and uploaded_file:
-    # Read the content of the uploaded file
-    file_content = uploaded_file.read().decode("utf-8")
-    print(file_content)
+        if file_extension == ".txt":
+            # Process .txt files
+            text = uploaded_file.read().decode("utf-8")
+            loader = TextLoader(text)
+        elif file_extension == ".pdf":
+            # Process .pdf files
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+                temp_pdf.write(uploaded_file.read())
+                temp_pdf_path = temp_pdf.name
 
-    # Append the user's question to the messages
-    st.session_state.messages.append({"role": "user", "content": question})
-    st.chat_message("user").write(question)
+            loader = PyPDFLoader(temp_pdf_path)
+        else:
+            st.error(f"Unsupported file format: {file_extension}")
+            continue
 
-    with st.chat_message("assistant"):
-        stream = client.chat.completions.create(
-            model="gpt-4o",  # Change this to a valid model name
-            messages=[
-                {"role": "system", "content": f"Here's the content of the file:\n\n{file_content}"},
-                *st.session_state.messages
-            ],
-            stream=True
-        )
-        response = st.write_stream(stream)
+        document = loader.load()
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        chunks = text_splitter.split_documents(document)
+        documents.extend(chunks)
 
-    # Append the assistant's response to the messages
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    # Build the vector store and embeddings to find the most relevant parts of the documents
+    embeddings = OpenAIEmbeddings(
+        openai_api_key=api_key,
+        openai_api_base="https://api.ai.it.cornell.edu",
+        model="openai.text-embedding-3-large" 
+    )
+    vector_store = Chroma.from_documents(documents, embeddings)
+
+    # Create a Retrieval and QA chain
+    retriever = vector_store.as_retriever()
+    qa_chain = RetrievalQA.from_chain_type(llm=client, retriever=retriever)
+
+    # Chat interface setup
+    st.session_state["messages"] = st.session_state.get("messages", [])
+
+    for message in st.session_state["messages"]:
+        st.chat_message(message["role"]).write(message["content"])
+
+    user_input = st.chat_input("Ask a question about your documents")
+
+    if user_input:
+        st.session_state["messages"].append({"role": "user", "content": user_input})
+        st.chat_message("user").write(user_input)
+
+        # Generate response
+        response = qa_chain.run(user_input)
+        st.session_state["messages"].append({"role": "assistant", "content": response})
+        st.chat_message("assistant").write(response)
